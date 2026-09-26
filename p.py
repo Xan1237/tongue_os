@@ -2,29 +2,36 @@
 Face-gesture TikTok navigator (MVP), driven through Playwright.
 
 Setup:
-    pip install mediapipe opencv-python playwright
+    pip install mediapipe opencv-python playwright scikit-learn
+    python record_tongue.py    # record your tongue poses
+    python train_tongue.py     # -> tongue_model.pkl
 Run:
     python p.py
 The script opens its own Chrome window (separate profile, so log into TikTok
 once there) and controls the TikTok tab directly -- it doesn't need focus.
 
 Gestures (tune thresholds using the on-screen scores):
-    Open mouth      -> next video   (scroll down)
-    Raise eyebrows  -> prev video   (scroll up)
-    Big smile       -> pause / play
+    Tongue down  -> next video   (scroll down)
+    Tongue up    -> prev video   (scroll up)
 Press q in the preview window to quit.
 """
+import collections
 import os
 import socket
 import subprocess
+import sys
 import time
-import urllib.request
 
 import cv2
+import joblib
 import mediapipe as mp
-from mediapipe.tasks import python as mp_python
-from mediapipe.tasks.python import vision
+import numpy as np
 from playwright.sync_api import sync_playwright
+
+from face import CLASSIFIER, LABELS, crop_mouth, embed, make_embedder, make_landmarker
+
+if not os.path.exists(CLASSIFIER):
+    sys.exit("No tongue_model.pkl yet: run record_tongue.py, then train_tongue.py.")
 
 # --- browser -----------------------------------------------------------------
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
@@ -87,28 +94,19 @@ ACTIONS = {
     "pause": lambda: print("  ->", page.evaluate(TOGGLE_JS)),
 }
 
-# --- face model --------------------------------------------------------------
-MODEL = "face_landmarker.task"
-URL = ("https://storage.googleapis.com/mediapipe-models/face_landmarker/"
-       "face_landmarker/float16/1/face_landmarker.task")
-if not os.path.exists(MODEL):
-    print("Downloading model (~4 MB)...")
-    urllib.request.urlretrieve(URL, MODEL)
+# --- face + tongue models ----------------------------------------------------
+landmarker = make_landmarker()
+embedder = make_embedder()
+tongue_clf = joblib.load(CLASSIFIER)
+# Average tongue probabilities over the last few frames so one misread frame
+# can't scroll the feed.
+SMOOTH = 5
+tongue_hist = collections.deque(maxlen=SMOOTH)
 
-landmarker = vision.FaceLandmarker.create_from_options(
-    vision.FaceLandmarkerOptions(
-        base_options=mp_python.BaseOptions(model_asset_path=MODEL),
-        running_mode=vision.RunningMode.VIDEO,
-        output_face_blendshapes=True,
-        num_faces=1,
-    )
-)
-
-# (name, score function over blendshapes, threshold, action)
+# (name, score function over blendshapes + tongue probs, threshold, action)
 GESTURES = [
-    ("next (mouth open)", lambda s: s["jawOpen"], 0.50, "down"),
-    ("prev (brows up)",   lambda s: s["browInnerUp"], 0.60, "up"),
-    ("pause (smile)",     lambda s: (s["mouthSmileLeft"] + s["mouthSmileRight"]) / 2, 0.70, "pause"),
+    ("next (tongue down)", lambda s: s["tongue_down"], 0.65, "down"),
+    ("prev (tongue up)",   lambda s: s["tongue_up"], 0.80, "up"),
 ]
 COOLDOWN = 1.0   # seconds between actions
 armed = True     # must return to neutral before the next gesture fires
@@ -127,6 +125,11 @@ while cap.isOpened():
 
     if result.face_blendshapes:
         s = {c.category_name: c.score for c in result.face_blendshapes[0]}
+        crop = crop_mouth(frame, result.face_landmarks[0])
+        if crop is not None:
+            tongue_hist.append(tongue_clf.predict_proba([embed(embedder, crop)])[0])
+        probs = np.mean(tongue_hist, axis=0) if tongue_hist else np.zeros(len(LABELS))
+        s.update(zip(LABELS, probs))
         vals = [(name, fn(s), th, act) for name, fn, th, act in GESTURES]
         active = [v for v in vals if v[1] > v[2]]
         now = time.time()
