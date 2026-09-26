@@ -11,8 +11,8 @@ The script opens its own Chrome window (separate profile, so log into TikTok
 once there) and controls the TikTok tab directly -- it doesn't need focus.
 
 Gestures (tune thresholds using the on-screen scores):
-    Tongue down  -> next video   (scroll down)
-    Tongue up    -> prev video   (scroll up)
+    Tongue down  -> next video   (scroll down)  | blackjack tab: S (stand)
+    Tongue up    -> prev video   (scroll up)    | blackjack tab: H (hit)
     Wink right   -> next browser tab
     Wink left    -> previous browser tab
 Press q in the preview window to quit.
@@ -40,6 +40,7 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROFILE = os.path.join(os.environ["LOCALAPPDATA"], "tiktok-chrome")
 PORT = 9222
 TIKTOK = "https://www.tiktok.com/foryou"
+BLACKJACK = "http://localhost:5173/"
 
 
 def port_open():
@@ -62,6 +63,14 @@ page = next((p for p in ctx.pages if "tiktok.com" in p.url), None)
 if page is None:
     page = ctx.new_page()
     page.goto(TIKTOK)
+
+# Open the blackjack tab alongside TikTok, but start on TikTok.
+if not any(p.url.startswith(BLACKJACK) for p in ctx.pages):
+    try:
+        ctx.new_page().goto(BLACKJACK)
+    except Exception as e:
+        print(f"blackjack not reachable at {BLACKJACK} (is the dev server running?):", e)
+page.bring_to_front()
 
 # Toggle whichever <video> takes up the most of the viewport.
 TOGGLE_JS = """() => {
@@ -100,9 +109,17 @@ def switch_tab(step):
     print("  ->", page.url[:80])
 
 
+def tongue(bj_key, direction, key):
+    """Blackjack tab gets H/S; anything else gets feed navigation."""
+    if page.url.startswith(BLACKJACK):
+        page.keyboard.press(bj_key)
+    else:
+        nav(direction, key)
+
+
 ACTIONS = {
-    "down":  lambda: nav("next", "ArrowDown"),
-    "up":    lambda: nav("prev", "ArrowUp"),
+    "down":  lambda: tongue("s", "next", "ArrowDown"),
+    "up":    lambda: tongue("h", "prev", "ArrowUp"),
     "tab_right": lambda: switch_tab(+1),
     "tab_left":  lambda: switch_tab(-1),
     "pause": lambda: print("  ->", page.evaluate(TOGGLE_JS)),
@@ -119,8 +136,8 @@ tongue_hist = collections.deque(maxlen=SMOOTH)
 
 # (name, score function over blendshapes + tongue probs, threshold, action)
 GESTURES = [
-    ("next (tongue down)", lambda s: s["tongue_down"], 0.65, "down"),
-    ("prev (tongue up)",   lambda s: s["tongue_up"], 0.80, "up"),
+    ("next/stand (tongue down)", lambda s: s["tongue_down"], 0.65, "down"),
+    ("prev/hit (tongue up)", lambda s: s["tongue_up"], 0.80, "up"),
     # Wink = one eye shut while the other stays open (normal blinks cancel out).
     # The preview is mirrored; if left/right feel swapped, swap the two names.
     ("tab right (wink R)", lambda s: s["eyeBlinkLeft"] - s["eyeBlinkRight"], 0.20, "tab_right"),
