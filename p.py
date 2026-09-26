@@ -40,7 +40,7 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROFILE = os.path.join(os.environ["LOCALAPPDATA"], "tiktok-chrome")
 PORT = 9222
 TIKTOK = "https://www.tiktok.com/foryou"
-BLACKJACK = "http://localhost:5173/"
+BLACKJACK = "https://blackjack-coral.vercel.app/"
 
 
 def port_open():
@@ -69,7 +69,7 @@ if not any(p.url.startswith(BLACKJACK) for p in ctx.pages):
     try:
         ctx.new_page().goto(BLACKJACK)
     except Exception as e:
-        print(f"blackjack not reachable at {BLACKJACK} (is the dev server running?):", e)
+        print(f"blackjack not reachable at {BLACKJACK}:", e)
 page.bring_to_front()
 
 # Toggle whichever <video> takes up the most of the viewport.
@@ -136,7 +136,7 @@ tongue_hist = collections.deque(maxlen=SMOOTH)
 
 # (name, score function over blendshapes + tongue probs, threshold, action)
 GESTURES = [
-    ("next/stand (tongue down)", lambda s: s["tongue_down"], 0.65, "down"),
+    ("next/stand (tongue down)", lambda s: s["tongue_down"], 0.40, "down"),
     ("prev/hit (tongue up)", lambda s: s["tongue_up"], 0.80, "up"),
     # Wink = one eye shut while the other stays open (normal blinks cancel out).
     # The preview is mirrored; if left/right feel swapped, swap the two names.
