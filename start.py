@@ -113,12 +113,20 @@ def nav(direction, key):
         page.keyboard.press(key)
 
 
+def app_tabs():
+    """TikTok, then each SITES tab, in that fixed order (the order they open in).
+    Other tabs are skipped. Chrome doesn't expose the tab strip's visual order."""
+    tabs = [next((p for p in ctx.pages if "tiktok.com" in p.url), None)]
+    tabs += [next((p for p in ctx.pages if p.url.startswith(u)), None) for u in SITES]
+    return [t for t in tabs if t]
+
+
 def switch_tab(step):
-    """Move to the next (+1) / previous (-1) tab; later gestures act on it."""
+    """Move right (+1) / left (-1) through app_tabs(); later gestures act on it."""
     global page
-    pages = ctx.pages
-    i = pages.index(page) if page in pages else 0
-    page = pages[(i + step) % len(pages)]
+    tabs = app_tabs()
+    i = tabs.index(page) if page in tabs else 0
+    page = tabs[(i + step) % len(tabs)]
     page.bring_to_front()
     print("  ->", page.url[:80])
 
@@ -152,11 +160,11 @@ tongue_hist = collections.deque(maxlen=SMOOTH)
 # (name, score function over blendshapes + tongue probs, threshold, action)
 GESTURES = [
     ("down: next/S/N (tongue)", lambda s: s["tongue_down"], 0.40, "down"),
-    ("up: prev/H/Y (tongue)", lambda s: s["tongue_up"], 0.80, "up"),
+    ("up: prev/H/Y (tongue)", lambda s: s["tongue_up"], 0.60, "up"),
     # Wink = one eye shut while the other stays open (normal blinks cancel out).
-    # Checked live: MediaPipe's eyeBlinkRight is your right eye in this setup.
-    ("tab right (wink R)", lambda s: s["eyeBlinkRight"] - s["eyeBlinkLeft"], 0.20, "tab_right"),
-    ("tab left (wink L)",  lambda s: s["eyeBlinkLeft"] - s["eyeBlinkRight"], 0.20, "tab_left"),
+    # The preview is mirrored, so MediaPipe's eyeBlinkLeft is your right eye.
+    ("tab right (wink R)", lambda s: s["eyeBlinkLeft"] - s["eyeBlinkRight"], 0.20, "tab_right"),
+    ("tab left (wink L)",  lambda s: s["eyeBlinkRight"] - s["eyeBlinkLeft"], 0.20, "tab_left"),
 ]
 COOLDOWN = 1.0   # seconds between actions
 armed = True     # must return to neutral before the next gesture fires
