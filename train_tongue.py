@@ -29,7 +29,7 @@ for idx, label in enumerate(LABELS):
 X, y = np.array(X), np.array(y)
 
 # Embeddings are L2-normalised (tiny values); scale them or the model stays
-# timid and never gets confident enough to cross p.py's thresholds.
+# timid and never gets confident enough to cross start.py's thresholds.
 clf = make_pipeline(StandardScaler(), LogisticRegression(max_iter=2000, C=0.1))
 # Unshuffled folds: neighbouring frames are near-duplicates, so this is a more
 # honest estimate than a random split.

@@ -6,23 +6,25 @@ Setup:
     python record_tongue.py    # record your tongue poses
     python train_tongue.py     # -> tongue_model.pkl
 Run:
-    python p.py
+    python start.py
 The script opens its own Chrome window (separate profile, so log into TikTok
 once there) and controls the TikTok tab directly -- it doesn't need focus.
 
 Gestures (tune thresholds using the on-screen scores):
-    Tongue down  -> next video   (scroll down)  | blackjack tab: S (stand)
-    Tongue up    -> prev video   (scroll up)    | blackjack tab: H (hit)
+    Tongue down  -> next video   (scroll down)  | blackjack: S | swipe club: N
+    Tongue up    -> prev video   (scroll up)    | blackjack: H | swipe club: Y
     Wink right   -> next browser tab
     Wink left    -> previous browser tab
 Press q in the preview window to quit.
 """
 import collections
+import json
 import os
 import socket
 import subprocess
 import sys
 import time
+import urllib.request
 
 import cv2
 import joblib
@@ -40,7 +42,11 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 PROFILE = os.path.join(os.environ["LOCALAPPDATA"], "tiktok-chrome")
 PORT = 9222
 TIKTOK = "https://www.tiktok.com/foryou"
-BLACKJACK = "https://blackjack-coral.vercel.app/"
+# Extra tabs opened on launch: url -> (tongue-up key, tongue-down key).
+SITES = {
+    "https://blackjack-coral.vercel.app/": ("h", "s"),   # hit / stand
+    "https://swipeapptest2.vercel.app/": ("y", "n"),     # swipe club
+}
 
 
 def port_open():
@@ -56,6 +62,13 @@ if not port_open():
             break
         time.sleep(0.2)
 
+# Chrome can keep running with every window closed; Playwright then hangs on
+# connect, so give it a tab first.
+tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{PORT}/json/list"))
+if not any(t["type"] == "page" for t in tabs):
+    urllib.request.urlopen(urllib.request.Request(
+        f"http://127.0.0.1:{PORT}/json/new?{TIKTOK}", method="PUT"))
+
 pw = sync_playwright().start()
 browser = pw.chromium.connect_over_cdp(f"http://127.0.0.1:{PORT}")
 ctx = browser.contexts[0]
@@ -64,12 +77,13 @@ if page is None:
     page = ctx.new_page()
     page.goto(TIKTOK)
 
-# Open the blackjack tab alongside TikTok, but start on TikTok.
-if not any(p.url.startswith(BLACKJACK) for p in ctx.pages):
-    try:
-        ctx.new_page().goto(BLACKJACK)
-    except Exception as e:
-        print(f"blackjack not reachable at {BLACKJACK}:", e)
+# Open the extra site tabs alongside TikTok, but start on TikTok.
+for url in SITES:
+    if not any(p.url.startswith(url) for p in ctx.pages):
+        try:
+            ctx.new_page().goto(url)
+        except Exception as e:
+            print(f"not reachable: {url}:", e)
 page.bring_to_front()
 
 # Toggle whichever <video> takes up the most of the viewport.
@@ -109,17 +123,18 @@ def switch_tab(step):
     print("  ->", page.url[:80])
 
 
-def tongue(bj_key, direction, key):
-    """Blackjack tab gets H/S; anything else gets feed navigation."""
-    if page.url.startswith(BLACKJACK):
-        page.keyboard.press(bj_key)
+def tongue(which, direction, key):
+    """On a SITES tab press its key (which: 0 = up, 1 = down); else navigate the feed."""
+    site = next((keys for url, keys in SITES.items() if page.url.startswith(url)), None)
+    if site:
+        page.keyboard.press(site[which])
     else:
         nav(direction, key)
 
 
 ACTIONS = {
-    "down":  lambda: tongue("s", "next", "ArrowDown"),
-    "up":    lambda: tongue("h", "prev", "ArrowUp"),
+    "down":  lambda: tongue(1, "next", "ArrowDown"),
+    "up":    lambda: tongue(0, "prev", "ArrowUp"),
     "tab_right": lambda: switch_tab(+1),
     "tab_left":  lambda: switch_tab(-1),
     "pause": lambda: print("  ->", page.evaluate(TOGGLE_JS)),
@@ -136,8 +151,8 @@ tongue_hist = collections.deque(maxlen=SMOOTH)
 
 # (name, score function over blendshapes + tongue probs, threshold, action)
 GESTURES = [
-    ("next/stand (tongue down)", lambda s: s["tongue_down"], 0.40, "down"),
-    ("prev/hit (tongue up)", lambda s: s["tongue_up"], 0.80, "up"),
+    ("down: next/S/N (tongue)", lambda s: s["tongue_down"], 0.40, "down"),
+    ("up: prev/H/Y (tongue)", lambda s: s["tongue_up"], 0.80, "up"),
     # Wink = one eye shut while the other stays open (normal blinks cancel out).
     # The preview is mirrored; if left/right feel swapped, swap the two names.
     ("tab right (wink R)", lambda s: s["eyeBlinkLeft"] - s["eyeBlinkRight"], 0.20, "tab_right"),

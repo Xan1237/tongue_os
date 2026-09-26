@@ -1,5 +1,4 @@
 tongue_data/
-tongue_model.pkl
 *.tflite
 __pycache__/
 face_landmarker.task

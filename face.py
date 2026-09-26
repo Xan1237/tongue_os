@@ -1,4 +1,4 @@
-"""Shared face / mouth helpers for p.py, record_tongue.py and train_tongue.py."""
+"""Shared face / mouth helpers for start.py, record_tongue.py and train_tongue.py."""
 import os
 import urllib.request
 
