@@ -13,6 +13,8 @@ once there) and controls the TikTok tab directly -- it doesn't need focus.
 Gestures (tune thresholds using the on-screen scores):
     Tongue down  -> next video   (scroll down)
     Tongue up    -> prev video   (scroll up)
+    Wink right   -> next browser tab
+    Wink left    -> previous browser tab
 Press q in the preview window to quit.
 """
 import collections
@@ -88,9 +90,21 @@ def nav(direction, key):
         page.keyboard.press(key)
 
 
+def switch_tab(step):
+    """Move to the next (+1) / previous (-1) tab; later gestures act on it."""
+    global page
+    pages = ctx.pages
+    i = pages.index(page) if page in pages else 0
+    page = pages[(i + step) % len(pages)]
+    page.bring_to_front()
+    print("  ->", page.url[:80])
+
+
 ACTIONS = {
     "down":  lambda: nav("next", "ArrowDown"),
     "up":    lambda: nav("prev", "ArrowUp"),
+    "tab_right": lambda: switch_tab(+1),
+    "tab_left":  lambda: switch_tab(-1),
     "pause": lambda: print("  ->", page.evaluate(TOGGLE_JS)),
 }
 
@@ -107,6 +121,10 @@ tongue_hist = collections.deque(maxlen=SMOOTH)
 GESTURES = [
     ("next (tongue down)", lambda s: s["tongue_down"], 0.65, "down"),
     ("prev (tongue up)",   lambda s: s["tongue_up"], 0.80, "up"),
+    # Wink = one eye shut while the other stays open (normal blinks cancel out).
+    # The preview is mirrored; if left/right feel swapped, swap the two names.
+    ("tab right (wink R)", lambda s: s["eyeBlinkLeft"] - s["eyeBlinkRight"], 0.20, "tab_right"),
+    ("tab left (wink L)",  lambda s: s["eyeBlinkRight"] - s["eyeBlinkLeft"], 0.20, "tab_left"),
 ]
 COOLDOWN = 1.0   # seconds between actions
 armed = True     # must return to neutral before the next gesture fires
