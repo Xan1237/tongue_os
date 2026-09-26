@@ -154,9 +154,9 @@ GESTURES = [
     ("down: next/S/N (tongue)", lambda s: s["tongue_down"], 0.40, "down"),
     ("up: prev/H/Y (tongue)", lambda s: s["tongue_up"], 0.80, "up"),
     # Wink = one eye shut while the other stays open (normal blinks cancel out).
-    # The preview is mirrored; if left/right feel swapped, swap the two names.
-    ("tab right (wink R)", lambda s: s["eyeBlinkLeft"] - s["eyeBlinkRight"], 0.20, "tab_right"),
-    ("tab left (wink L)",  lambda s: s["eyeBlinkRight"] - s["eyeBlinkLeft"], 0.20, "tab_left"),
+    # Checked live: MediaPipe's eyeBlinkRight is your right eye in this setup.
+    ("tab right (wink R)", lambda s: s["eyeBlinkRight"] - s["eyeBlinkLeft"], 0.20, "tab_right"),
+    ("tab left (wink L)",  lambda s: s["eyeBlinkLeft"] - s["eyeBlinkRight"], 0.20, "tab_left"),
 ]
 COOLDOWN = 1.0   # seconds between actions
 armed = True     # must return to neutral before the next gesture fires
